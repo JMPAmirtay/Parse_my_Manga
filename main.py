@@ -1,47 +1,91 @@
-import requests
+import time
+
 import os
+import urllib.request
+from selenium.common.exceptions import ElementNotInteractableException
 
-chapter_number = 1
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.options import Options
 
-chapter_number1 = 1
+# Подключаемся к Селениуму
+options = Options()
+options.binary_location = r"C:\Program Files\Mozilla Firefox\firefox.exe"
+browser = webdriver.Firefox(options=options,
+                            executable_path=r"venv\driver\geckodriver.exe")
 
-ufr_error = requests.get("https://img3.cdnlibs.link//manga/all-you-need-is-kill/chapters/1-1/33.jpg")
+# Заходим на Мангалиб
+browser.get('https://mangalib.me/')
 
-error = 0
-while True:
-    chapter_dir1 = r'C:\Users\Dimash\Pictures\Manga\\' + str(chapter_number)
-    chapter_url1 = "https://img3.cdnlibs.link//manga/all-you-need-is-kill/chapters/" + str(chapter_number)
-    error1 = 0
-    while True:
-        chapter_dir = chapter_dir1 + '-' + str(chapter_number) + '\\'
-        chapter_url = chapter_url1 + "-" + str(chapter_number) + "/"
-        os.mkdir(chapter_dir)
-        number = 1
-        while True:
-            url = chapter_url + str(number).zfill(2) + ".jpg"
-            ufr = requests.get(url)
-            if ufr.content == ufr_error.content:
-                url = chapter_url + str(number).zfill(2) + ".png"
-                ufr = requests.get(url)
-                if ufr.content == ufr_error.content:
-                    error += 1
-                    error1 += 1
-                    break
-                f = open(chapter_dir + str(number).zfill(2) + '.png', "wb+")
-                f.write(ufr.content)  # записываем содержимое в файл; как видите - content запроса
-                f.close()
-                number += 1
-                continue
-            f = open(chapter_dir + str(number).zfill(2) + '.jpg', "wb+")
-            f.write(ufr.content)  # записываем содержимое в файл; как видите - content запроса
-            f.close()
-            number += 1
+# Что находиться внутри элемента?
+# elem.get_attribute('innerHTML')
 
-        if error1 == 2:
-            break
+# Нажимаем кнопку поиск
+browser.find_element(By.ID, 'search-link').click()
+# Вводим в адресную строку интересующую мангу
+browser.find_element(By.TAG_NAME, 'input').send_keys("onepunchman")
+time.sleep(2)
+# Нажимаем на первую встречную
+browser.find_element(By.CLASS_NAME, 'manga-list-item__cover').click()
+time.sleep(1)
+# Убираем ненужное окно
+browser.find_element(By.CLASS_NAME, 'media-sidebar').find_elements(By.TAG_NAME, 'a')[3].click()
+time.sleep(2)
 
-        chapter_number += 1
+# Смотрим сколько глав в манге
+browser.find_elements(By.CLASS_NAME, 'reader-header-action__text')[1].click()
+browser.find_elements(By.CLASS_NAME, 'modal__close')[2].click()
 
-    if error == 3:
-        break
-    chapter_number1 += 1
+# Записываем номер последней главы
+last_chapter = int(browser.find_element(By.CLASS_NAME, 'menu__item').text.split(" - ")[0].split(" ")[-1])
+print(last_chapter)
+
+# Записываем номер текущей главы
+now_chapter = int(browser.find_elements(By.CLASS_NAME, 'reader-header-action__text')[1].text.split(" ")[-1])
+print(now_chapter)
+
+# Сверяем их и когда дойдёт до последней главы программа завершается
+while now_chapter < last_chapter:
+    url = browser.find_element(By.TAG_NAME, 'img').get_attribute('src')
+
+    name = url.split("/")[-4]
+    # Создаем все нужные папки
+    if not os.path.isdir('Download'):
+        os.mkdir('Download')
+    if not os.path.isdir('Download/' + name):
+        os.mkdir('Download/' + name)
+    if not os.path.isdir('Download/' + name + "/chapters"):
+        os.mkdir('Download/' + name + "/chapters")
+    # Записываем последюю страницу в главе
+    lost_img_number = int(browser.find_element(By.CLASS_NAME, 'reader-pages__label').text.split("/")[-1])
+
+    # Цикл работает столько сколько страниц в главе
+    for img_number in range(0, lost_img_number):
+        url = browser.find_elements(By.TAG_NAME, 'img')[img_number].get_attribute('src')
+
+        # Записываем номер главы
+        chapter = url.split("/")[-2]
+
+        # Записываем имя картинки
+        name_img = url.split("/")[-1]
+
+        # Создаем папку с главой
+        if not os.path.isdir('Download/' + name + "/chapters/" + chapter):
+            os.mkdir('Download/' + name + "/chapters/" + chapter)
+
+        # Записываем изображение
+        urllib.request.urlretrieve(url, 'Download/' + name + "/chapters/" + chapter + "/" + name_img)
+
+        # Нажимаем на картинку
+        try:
+            browser.find_elements(By.TAG_NAME, 'img')[img_number].click()
+        except ElementNotInteractableException:
+            time.sleep(1)
+
+    # Обновляем текущую главу
+    print(browser.find_elements(By.CLASS_NAME, 'reader-header-action__text')[1].text)
+    now_chapter = int(browser.find_elements(By.CLASS_NAME, 'reader-header-action__text')[1].text.split(" ")[-1])
+
+    # Последняя итерация
+    if now_chapter == last_chapter:
+        now_chapter += 1
